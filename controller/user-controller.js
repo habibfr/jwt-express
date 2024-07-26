@@ -5,17 +5,18 @@ import success_response from "../util/success-response.js";
 import jwt from "jsonwebtoken";
 import ZodValidator from "../validation/validator.js";
 import userValidation from "../validation/user-validation.js";
+import UserService from "../service/user-service.js";
 
 export default class UserController {
   static getUsers = async (req, res) => {
     try {
-      const users = await Users.findAll({
-        attributes: ["id", "name", "email"],
-      });
+      const users = await UserService.getUsers();
+
       if (users.length === 0) {
-        return res.json(error_response("Data kosong"));
+        return res.json(success_response("Data kosong", []));
       }
-      res.json(users);
+
+      res.json(success_response("Success", users));
     } catch (error) {
       console.log(error);
     }
