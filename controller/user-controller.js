@@ -22,16 +22,18 @@ export default class UserController {
   };
 
   static register = async (req, res) => {
-    const userLoginRequestValid = ZodValidator.validate(
+    const userRegisterRequestValid = ZodValidator.validate(
       userValidation.REGISTER,
       req.body
     );
 
-    if (userLoginRequestValid.errors) {
-      return res.status(400).json({ errors: userLoginRequestValid.errors });
+    if (userRegisterRequestValid.errors) {
+      return res
+        .status(400)
+        .json({ errors: userRegisterRequestValid.errors[0].message });
     }
 
-    const { name, email, password, confirmPassword } = userLoginRequestValid;
+    const { name, email, password, confirmPassword } = userRegisterRequestValid;
 
     if (password !== confirmPassword)
       return res
@@ -56,7 +58,6 @@ export default class UserController {
       );
     } catch (error) {
       if (error.parent.code === "23505") {
-        // Kode error untuk duplicate key
         return res
           .status(400)
           .json({ error: `User with email ${email} already exists.` });
@@ -68,12 +69,26 @@ export default class UserController {
 
   static login = async (req, res) => {
     try {
+      const userLoginRequestValid = ZodValidator.validate(
+        userValidation.LOGIN,
+        req.body
+      );
+
+      if (userLoginRequestValid.errors) {
+        return res
+          .status(400)
+          .json({ errors: userLoginRequestValid.errors[0].message });
+      }
+
       const user = await Users.findAll({
         where: {
-          email: req.body.email,
+          email: userLoginRequestValid.email,
         },
       });
-      const match = await bcrypt.compare(req.body.password, user[0].password);
+      const match = await bcrypt.compare(
+        userLoginRequestValid.password,
+        user[0].password
+      );
       if (!match)
         return res.status(400).json(error_response("Password not match"));
 
