@@ -3,6 +3,8 @@ import error_response from "../util/error-response.js";
 import bcrypt from "bcrypt";
 import success_response from "../util/success-response.js";
 import jwt from "jsonwebtoken";
+import ZodValidator from "../validation/validator.js";
+import userValidation from "../validation/user-validation.js";
 
 export default class UserController {
   static getUsers = async (req, res) => {
@@ -20,7 +22,16 @@ export default class UserController {
   };
 
   static register = async (req, res) => {
-    const { name, email, password, confirmPassword } = req.body;
+    const userLoginRequestValid = ZodValidator.validate(
+      userValidation.REGISTER,
+      req.body
+    );
+
+    if (userLoginRequestValid.errors) {
+      return res.status(400).json({ errors: userLoginRequestValid.errors });
+    }
+
+    const { name, email, password, confirmPassword } = userLoginRequestValid;
 
     if (password !== confirmPassword)
       return res
@@ -44,7 +55,14 @@ export default class UserController {
         })
       );
     } catch (error) {
-      console.log(error);
+      if (error.parent.code === "23505") {
+        // Kode error untuk duplicate key
+        return res
+          .status(400)
+          .json({ error: `User with email ${email} already exists.` });
+      }
+      console.error(error);
+      res.status(500).json({ error: "Internal server error" });
     }
   };
 
