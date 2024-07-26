@@ -1,167 +1,30 @@
-import Users from "../models/user-model.js";
-import error_response from "../util/error-response.js";
-import bcrypt from "bcrypt";
-import success_response from "../util/success-response.js";
-import jwt from "jsonwebtoken";
-import ZodValidator from "../validation/validator.js";
-import userValidation from "../validation/user-validation.js";
 import UserService from "../service/user-service.js";
 
 export default class UserController {
   static getUsers = async (req, res) => {
-    try {
-      const users = await UserService.getUsers();
+    const users = await UserService.getUsers();
 
-      if (users.length === 0) {
-        return res.json(success_response("Data kosong", []));
-      }
-
-      res.json(success_response("Success", users));
-    } catch (error) {
-      console.log(error);
-    }
+    res.json(users);
   };
 
   static register = async (req, res) => {
-    const userRegisterRequestValid = ZodValidator.validate(
-      userValidation.REGISTER,
-      req.body
-    );
-
-    if (userRegisterRequestValid.errors) {
-      return res
-        .status(400)
-        .json({ errors: userRegisterRequestValid.errors[0].message });
-    }
-
-    const { name, email, password, confirmPassword } = userRegisterRequestValid;
-
-    if (password !== confirmPassword)
-      return res
-        .status(400)
-        .json(error_response("Password and confirm password not match!!"));
-
-    const salt = await bcrypt.genSalt();
-    const hashPassword = await bcrypt.hash(password, salt);
-
-    try {
-      await Users.create({
-        name: name,
-        email: email,
-        password: hashPassword,
-      });
-      res.json(
-        success_response("Registration successfully", {
-          name: name,
-          email: email,
-          password: hashPassword,
-        })
-      );
-    } catch (error) {
-      if (error.parent.code === "23505") {
-        return res
-          .status(400)
-          .json({ error: `User with email ${email} already exists.` });
-      }
-      console.error(error);
-      res.status(500).json({ error: "Internal server error" });
-    }
+    const user = await UserService.createUser(req.body);
+    res.json(user);
   };
 
-  static login = async (req, res) => {
-    try {
-      const userLoginRequestValid = ZodValidator.validate(
-        userValidation.LOGIN,
-        req.body
-      );
+  static async login(req, res) {
+    const result = await UserService.login(req.body, res);
 
-      if (userLoginRequestValid.errors) {
-        return res
-          .status(400)
-          .json({ errors: userLoginRequestValid.errors[0].message });
-      }
-
-      const user = await Users.findAll({
-        where: {
-          email: userLoginRequestValid.email,
-        },
-      });
-      const match = await bcrypt.compare(
-        userLoginRequestValid.password,
-        user[0].password
-      );
-      if (!match)
-        return res.status(400).json(error_response("Password not match"));
-
-      const userId = user[0].id;
-      const name = user[0].name;
-      const email = user[0].email;
-      const access_token = jwt.sign(
-        { userId, name, email },
-        process.env.ACCESS_TOKEN_SECRET,
-        {
-          expiresIn: "1m",
-        }
-      );
-      const refresh_token = jwt.sign(
-        { userId, name, email },
-        process.env.REFRESH_TOKEN_SECRET,
-        {
-          expiresIn: "1d",
-        }
-      );
-
-      await Users.update(
-        { refresh_token: refresh_token },
-        {
-          where: {
-            id: userId,
-          },
-        }
-      );
-
-      res.cookie("refresh_token", refresh_token, {
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000,
-      });
-
-      res.json({ access_token });
-    } catch (error) {
-      res
-        .status(404)
-        .json(error_response("Password wrong or email not registered"));
-      console.log(error);
+    if (result.errors) {
+      return res.status(400).json(result);
+    } else if (result.error) {
+      return res.status(400).json(result);
+    } else {
+      return res.status(200).json(result);
     }
-  };
+  }
 
-  static logout = async (req, res) => {
-    const refresh_token = req.cookies.refresh_token;
-    // console.log(" token", refresh_token);
-
-    if (!refresh_token) return res.sendStatus(204);
-
-    const user = await Users.findAll({
-      where: {
-        refresh_token: refresh_token,
-      },
-    });
-
-    if (!user[0]) {
-      return res.sendStatus(204);
-    }
-
-    const userId = user[0].id;
-    console.log(userId);
-    await Users.update(
-      { refresh_token: null },
-      {
-        where: {
-          id: userId,
-        },
-      }
-    );
-
-    res.clearCookie("refresh_token");
-    return res.sendStatus(200);
-  };
+  static async logout(req, res) {
+    await UserService.logout(req.cookies.refresh_token, res);
+  }
 }
